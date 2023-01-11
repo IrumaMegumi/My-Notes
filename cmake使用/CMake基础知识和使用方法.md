@@ -193,8 +193,7 @@ ADD_EXECUTABLE(可执行文件名称 依赖文件名称)
 
 ### (2)CMake写法
 
-<ul>
-<li>写法1：在每一个目录下都建立一个CMakeLists.txt，在main中汇总
+总体来说，就是在每一个目录下都建立一个CMakeLists.txt，在main中汇总。
 
 首先我们看一下子文件夹。子文件夹中的两个文件没有main函数，因此属于依赖的头文件和库文件。因此我们在给子文件夹写CMakeLists的时候，不需要写ADD_EXECUTABLE，而是要把他们以静态库/动态库的形式添加到主文件当中。让头文件和库文件生成静态/动态库的时候使用下面的指令：
 
@@ -222,5 +221,82 @@ ADD_EXECUTABLE(可执行文件名称 依赖文件名称)
 <li>TARGET_LINK_LIBRARIES的书写顺序，越底层的，越要写到后面，顺序不能错。
 </ul>
 
+最后我们完整的CMakeLists.txt如下：
 
-</ul>
+    主函数的CMake:
+    CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+    PROJECT(main_03 CXX)
+    ADD_SUBDIRECTORY(./mylib)
+    INCLUDE_DIRECTORIES(mylib)
+    AUX_SOURCE_DIRECTORY(. DIR_SRCS)
+    ADD_EXECUTABLE(main_03 ${DIR_SRCS})
+    TARGET_LINK_LIBRARIES(main_03 MyLib)
+
+    mylib文件夹下的CMake：
+    AUX_SOURCE_DIRECTORY(. DRC_SRCS)
+    ADD_LIBRARY(MyLib ${DRC_SRCS})：
+
+然后就可以在主函数所在的文件夹下编译运行啦。
+
+但是到了这里，我们发现，编译后会产生很多奇形怪状的文件，这些文件严重耽误了我们找我们要看的代码，如下图所示：
+
+<center>
+<img src="./08.png" width=50%>
+</center>
+
+因此我们实际操作时往往还要改下文件结构。
+
+### (3)标准型文件结构
+
+标准型文件结构一般常常会把库文件，主函数文件，编译文件分别放在3个文件夹当中，这样便于更快地寻找到对应的文件夹。下图展示了一种标准型的结构：
+
+<center>
+<img src="./09.png" width=50%>
+</center>
+
+可以看到，主函数被放到了src下面，build专门存放编译后产生的文件（包括可执行文件），编译后下面会有lib和bin2个文件夹，分别存放静态库/动态库和可执行文件。mylib存放的是源文件，src一般为主函数所在的文件。
+
+对于上面的标准型文件结构，书写CMakeLists时，和前面介绍的一样，可以多个文件分开书写，然后在根目录下面的CMakeLists.txt上一起添加。
+
+首先看mylib部分，这里面存放的是源文件，源文件我们希望它可以产生的是库文件，因此在写CMakeLists.txt的时候，首先要添加源文件目录，然后，通过添加的目录生成静态库，并指定将其存储在build下面的lib文件夹下。具体代码如下所示：
+
+    AUX_SOURCE_DIRECTORY(./ DIR_LIB_SRCS)
+    SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
+    ADD_LIBRARY(Mylib STATIC ${DIR_LIB_SRCS})
+
+第一行和第三行前面已经讲过，相信大家并不陌生，这里重点说一下第二行。第二行的set命令是用于设置路径的，这里面，我们设置的是产生的库存储的路径，因此前面用LIBRARY_OUTPUT_PATH加以说明，后面是存储的路径信息，<code>${PROJECT_BINARY_DIR}</code>是路径./build的变量定义，也就是build文件夹下，我们要把变量存储在lib文件夹中，这就是SET命令的作用。
+
+接下来看src部分，这一部分为主函数，因此我们需要它能够包含外部的库、生成可执行文件。具体代码如下所示：
+
+    INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/mylib)
+    AUX_SOURCE_DIRECTORY(./ DIR_SRCS)
+    SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+    ADD_EXECUTABLE(main_04 ${DIR_SRCS})
+    TARGET_LINK_LIBRARIES(main_04 Mylib)
+
+相信结合了前面的介绍，大家可以猜出来SET命令的大致功能了，没错，设置生成的可执行文件路径为./build/bin下。但是注意，由于这里不是根目录，我们的编译也不在此进行，因此这里不用写CMAKE_MINIMUM_REQUIRED一类的指令。
+
+最后是根目录下的CMakeList，由于根目录下面没有任何有效文件，因此我们只希望它能够编译整个项目并且把所有的头文件等导入进去。具体代码如下所示：
+
+    CMAKE_MINIMUM_REQUIRED(VERSION 3.0)
+    PROJECT(main_04)
+    ADD_SUBDIRECTORY(./mylib)
+    ADD_SUBDIRECTORY(./src)
+
+
+相信此时大家读到这里，都可以看懂啦。
+
+接下来我们在根目录下使用cmake编译，make生成文件，就可以在build下的bin文件夹里面看到你想要的可执行文件啦。
+
+# 3 小结
+
+前面分情况讲解了CMakeLists的书写方法和编译方法，为了避免读者思维混乱，这里在此进行一下小总结。
+
+CMake使用其实如果你不去刻意追求，其实并不是很困难，初学者看完上面教程即可非常轻松写出CMakeList。本质上，还是要按照你想要的功能去写。比如，当你看到所在文件夹是头文件的时候，你就需要知道，在这里写的CMakeList一定是生成静态/动态库的。如果所在的目录下面有主函数，你就要知道，它是用来生成可执行文件的，根据你对于功能的理解进行书写，即可事半功倍。后面将会介绍CMake的一些高级操作，帮助你更快地使用它。
+
+# 参考链接
+
+[1]https://blog.csdn.net/QTVLC/article/details/82380413
+
+[2]https://www.cnblogs.com/coderfenghc/archive/2012/07/08/2581734.html
+翻译自官网的文档，感兴趣的花可以看看。
